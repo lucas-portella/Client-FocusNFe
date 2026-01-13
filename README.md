@@ -37,5 +37,10 @@ Todos os métodos retornam um array no formato:
 ```
 Em caso de falha de comunicação, validação ou erro da API, retorna `status = 500` com a mensagem descritiva.
 
+## Documentação
+A documentação da API da FocusNFe está disponível nos seguintes endereços:
+-   [Documentação Oficial](https://focusnfe.com.br/doc/#introducao)
+-   [Documentação da Reforma Tributária 2026](https://doc.focusnfe.com.br/reference/introducao)
+
 # Autor
 Lucas Portella.
