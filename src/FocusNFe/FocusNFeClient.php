@@ -4,19 +4,43 @@
 
     Use Exception;
 
+    /**
+     * Client para integração com API da FocusNFe
+     * 
+     * Reponsável por autenticação e requisições HTTP
+     * para emissão e gerenciamento de NFSe.
+     */
+
     class FocusNFeClient 
     {
         private string $baseUrl;
         private string $login;
         private string $senha;
+        private string $idEmpresa;
 
-        public function __construct (string $login, string $senha, bool $ambienteHomologacao = true)
+        /**
+         * Contrutor da classe
+         * 
+         * @param string $login      Login fornecido pela FocusNFe
+         * @param string $senha      Senha fornecida pela FocusNFe
+         * @param ?string $idEmpresa Id da empresa, se previamente cadastrada na API
+         * @param bool $producao     Habilite false para testes em homologacao
+         */
+        public function __construct (string $login, string $senha, ?string $idEmpresa = null, bool $producao = true)
         {
             $this->login = $login;
             $this->senha = $senha;
-            $this->baseUrl = $ambienteHomologacao ? 'https://homologacao.focusnfe.com.br' : 'https://api.focusnfe.com.br';
+            $this->baseUrl = $producao ? 'https://api.focusnfe.com.br' : 'https://homologacao.focusnfe.com.br';
+            $this->idEmpresa = $idEmpresa;
         }
 
+        /**
+         * Gera payload para cadastro de empresa.\
+         * 
+         * @param array $dadosEmpresa   Dados necessários para cadastro da empresa. Verifique exemplos.
+         * 
+         * @return array 
+        */
         private function geraPayloadCadastroEmpresa (array $dadosEmpresa): array
         {
             $payload = [
@@ -129,6 +153,62 @@
             return $payload;
         }
 
+        /**
+         * Seta o IdEmpresa fornecido pela FocusNFe (mediante cadastro na API)
+         * 
+         * @param int $idEmpresa    Id da empresa retornado pela FocusNFe.
+         */
+        public function setIdEmpresa (int $idEmpresa): void
+        {
+            $this->idEmpresa = $idEmpresa;
+        }
+
+        /**
+         * Cadastra uma empresa na FocusNFe
+         * 
+         * @param array $payload    Dados necessários da empresa. Veja exemplos.
+         * @param bool $producao    Habilite false para testar em ambiente de homoloação (dry_run)
+         * 
+         * @return array
+         */
+        public function cadastraEmpresa (array $payload, bool $producao = true): array 
+        {
+            $uri = $producao ? '/v2/empresas' : '/v2/empresas?dry_run=1';
+
+            try {
+                $response = $this->request('POST', $uri, $this->geraPayloadCadastroEmpresa($payload));
+                $idEmpresa = $response['data']['id'] ?? null;
+                if ($idEmpresa) {
+                    $this->setIdEmpresa($idEmpresa);
+                }
+                return $response;
+            } catch (Exception $e) {
+                return [
+                    'status' => 500,
+                    'data' => [
+                        'ambiente' => $producao ? 'producao' : 'homologacao',
+                        'mensagem' => 'Erro ao cadastrar empresa',
+                        'detalhe'  => $e->getMessage()
+                    ]
+                ];
+            }
+        }
+
+        /**
+         * Realiza requisição HTTP
+         * 
+         * @param string $method    Método HTTP (POST, GET, PUT, DELETE, PATCH)
+         * @param string $uri       Endpoint da API
+         * @param array|null $body  Payload da requisição
+         * @param bool $raw         Se true, retorna o dado bruto (para download de xml, pdf, etc)
+         * 
+         * @return array {
+         *  status: int,
+         *  data: mixed
+         * }
+         * 
+         * @throws Exception    Em caso de erro de comunicação
+         */
         private function request (string $method = 'GET', string $uri, ?array $body = null, bool $raw = false): array
         {
             $ch = curl_init();
