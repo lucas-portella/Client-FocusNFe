@@ -272,6 +272,51 @@
         }
 
         /**
+         * Atualiza dados cadastrais da empresa na API
+         * 
+         * @param array $payload    Array com dados cadastrais da empresa. Verificar exemplos.
+         * @param bool  $producao   Habilite para false para ambiente de homologação.
+         * 
+         * @return array
+         */
+        public function atualizaEmpresa (array $payload, bool $producao = true): array
+        {
+            $uri = $producao ? "/v2/empresas/{$this->idEmpresa}" : "/v2/empresas/{$this->idEmpresa}?dry_run=1";
+
+            try {
+                return $this->request('PUT', $uri, $this->geraPayloadCadastroEmpresa($payload));
+            } catch (Exception $e) {
+                return [
+                    'status' => 500,
+                    'data' => [
+                        'mensagem' => 'Erro ao atualizar dados da empresa',
+                        'detalhe'  => $e->getMessage()
+                    ]
+                ];
+            }    
+        }
+
+        /**
+         * Deleta registro da empresa do banco de dados da FocusNFe.
+         */
+        public function deletaEmpresa (): array
+        {
+            $uri = "/v2/empresas/{$this->idEmpresa}";
+
+            try {
+                return $this->request('DELETE', $uri);
+            } catch (Exception $e) {
+                 return [
+                    'status' => 500,
+                    'data' => [
+                        'mensagem' => 'Erro ao atualizar dados da empresa',
+                        'detalhe'  => $e->getMessage()
+                    ]
+                ];
+            }
+        }
+
+        /**
          * Realiza requisição HTTP
          * 
          * @param string $method    Método HTTP (POST, GET, PUT, DELETE, PATCH)
