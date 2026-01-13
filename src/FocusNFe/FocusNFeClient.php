@@ -21,10 +21,10 @@
         /**
          * Contrutor da classe
          * 
-         * @param string $login      Login fornecido pela FocusNFe
-         * @param string $senha      Senha fornecida pela FocusNFe
-         * @param ?string $idEmpresa Id da empresa, se previamente cadastrada na API
-         * @param bool $producao     Habilite false para testes em homologacao
+         * @param string $login             Login fornecido pela FocusNFe
+         * @param string $senha             Senha fornecida pela FocusNFe
+         * @param string|null $idEmpresa    Id da empresa, se previamente cadastrada na API
+         * @param bool $producao            Habilite false para testes em homologacao
          */
         public function __construct (string $login, string $senha, ?string $idEmpresa = null, bool $producao = true)
         {
@@ -186,9 +186,86 @@
                 return [
                     'status' => 500,
                     'data' => [
-                        'ambiente' => $producao ? 'producao' : 'homologacao',
                         'mensagem' => 'Erro ao cadastrar empresa',
                         'detalhe'  => $e->getMessage()
+                    ]
+                ];
+            }
+        }
+
+        /**
+         * Lista empresas cadastradas, com suporte a filtros e paginação.
+         * 
+         * @param string|null $cnpj     Busca pelo cnpj, quando habilitado
+         * @param string|null $cpf      Busca pelo cpf, quando habilitado
+         * @param int|null    $offset   Suporte a paginação. Cada consulta retorna até 50 resultados
+         * 
+         * @return array
+         */
+        public function listaEmpresasCadastradas (?string $cnpj, ?string $cpf, ?int $offset): array
+        {
+            $uri = '/v2/empresas';
+            $query = [];
+
+            if ($cnpj !== null) {
+                $query['cnpj'] = str_replace(['.', '/', '-'], "", $cnpj);
+            }
+            if ($cpf !== null) {
+                $query['cpf'] = str_replace(['.', '-'], "", $cpf);
+            }
+            if ($offset && $offset >= 0) {
+                $query['offset'] = $offset;
+            }
+
+            if (!empty($query)) {
+                $uri .= '?' . http_build_query($query);
+            }
+
+            try {
+                return $this->request('GET', $uri);
+            } catch (Exception $e) {
+                return [
+                    'status' => 500,
+                    'data' => [
+                        'mensagem' => 'Erro ao consultar empresas',
+                        'detalhe'  => $e->getMessage()
+                    ]
+                ];
+            }
+        }
+
+        /**
+         * Consulta cadastro de uma empresa pelo seu Id. Caso nenhum Id seja passado,
+         * consulta pelo Id instanciado na classe.
+         * 
+         * @param string|null $idEmpresa    Id da empresa cadastrada na API.
+         * 
+         * @return array
+         */
+        public function consultaEmpresaPorId (?string $idEmpresa): array
+        {
+            $id = $idEmpresa ?? $this->idEmpresa;
+            
+            if ($id === null) {
+                return [
+                    'status' => 500,
+                    'data' => [
+                        'mensagem' => 'Erro ao consultar empresa por Id',
+                        'detalhe'  => 'Nenhum Id fornecido'
+                    ]
+                    ];
+            }
+
+            $uri = "/v2/empresas/{$id}";
+
+            try {
+                return $this->request('GET', $uri);
+            } catch (Exception $e) {
+                return [
+                    'status' => 500,
+                    'data'   => [
+                        'mensagem' => 'Erro ao consultar empresa por Id',
+                        'detalhe ' => $e->getMessage()
                     ]
                 ];
             }
