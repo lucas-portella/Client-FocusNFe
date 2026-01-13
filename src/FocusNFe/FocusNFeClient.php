@@ -4,19 +4,43 @@
 
     Use Exception;
 
+    /**
+     * Client para integração com API da FocusNFe
+     * 
+     * Reponsável por autenticação e requisições HTTP
+     * para emissão e gerenciamento de NFSe.
+     */
+
     class FocusNFeClient 
     {
         private string $baseUrl;
         private string $login;
         private string $senha;
+        private string $idEmpresa;
 
-        public function __construct (string $login, string $senha, bool $ambienteHomologacao = true)
+        /**
+         * Contrutor da classe
+         * 
+         * @param string $login             Login fornecido pela FocusNFe
+         * @param string $senha             Senha fornecida pela FocusNFe
+         * @param string|null $idEmpresa    Id da empresa, se previamente cadastrada na API
+         * @param bool $producao            Habilite false para testes em homologacao
+         */
+        public function __construct (string $login, string $senha, ?string $idEmpresa = null, bool $producao = true)
         {
             $this->login = $login;
             $this->senha = $senha;
-            $this->baseUrl = $ambienteHomologacao ? 'https://homologacao.focusnfe.com.br' : 'https://api.focusnfe.com.br';
+            $this->baseUrl = $producao ? 'https://api.focusnfe.com.br' : 'https://homologacao.focusnfe.com.br';
+            $this->idEmpresa = $idEmpresa;
         }
 
+        /**
+         * Gera payload para cadastro de empresa.\
+         * 
+         * @param array $dadosEmpresa   Dados necessários para cadastro da empresa. Verifique exemplos.
+         * 
+         * @return array 
+        */
         private function geraPayloadCadastroEmpresa (array $dadosEmpresa): array
         {
             $payload = [
@@ -129,6 +153,184 @@
             return $payload;
         }
 
+        /**
+         * Seta o IdEmpresa fornecido pela FocusNFe (mediante cadastro na API)
+         * 
+         * @param int $idEmpresa    Id da empresa retornado pela FocusNFe.
+         */
+        public function setIdEmpresa (int $idEmpresa): void
+        {
+            $this->idEmpresa = $idEmpresa;
+        }
+
+        /**
+         * Cadastra uma empresa na FocusNFe
+         * 
+         * @param array $payload    Dados necessários da empresa. Veja exemplos.
+         * @param bool $producao    Habilite false para testar em ambiente de homoloação (dry_run)
+         * 
+         * @return array
+         */
+        public function cadastraEmpresa (array $payload, bool $producao = true): array 
+        {
+            $uri = $producao ? '/v2/empresas' : '/v2/empresas?dry_run=1';
+
+            try {
+                $response = $this->request('POST', $uri, $this->geraPayloadCadastroEmpresa($payload));
+                $idEmpresa = $response['data']['id'] ?? null;
+                if ($idEmpresa) {
+                    $this->setIdEmpresa($idEmpresa);
+                }
+                return $response;
+            } catch (Exception $e) {
+                return [
+                    'status' => 500,
+                    'data' => [
+                        'mensagem' => 'Erro ao cadastrar empresa',
+                        'detalhe'  => $e->getMessage()
+                    ]
+                ];
+            }
+        }
+
+        /**
+         * Lista empresas cadastradas, com suporte a filtros e paginação.
+         * 
+         * @param string|null $cnpj     Busca pelo cnpj, quando habilitado
+         * @param string|null $cpf      Busca pelo cpf, quando habilitado
+         * @param int|null    $offset   Suporte a paginação. Cada consulta retorna até 50 resultados
+         * 
+         * @return array
+         */
+        public function listaEmpresasCadastradas (?string $cnpj, ?string $cpf, ?int $offset): array
+        {
+            $uri = '/v2/empresas';
+            $query = [];
+
+            if ($cnpj !== null) {
+                $query['cnpj'] = str_replace(['.', '/', '-'], "", $cnpj);
+            }
+            if ($cpf !== null) {
+                $query['cpf'] = str_replace(['.', '-'], "", $cpf);
+            }
+            if ($offset && $offset >= 0) {
+                $query['offset'] = $offset;
+            }
+
+            if (!empty($query)) {
+                $uri .= '?' . http_build_query($query);
+            }
+
+            try {
+                return $this->request('GET', $uri);
+            } catch (Exception $e) {
+                return [
+                    'status' => 500,
+                    'data' => [
+                        'mensagem' => 'Erro ao consultar empresas',
+                        'detalhe'  => $e->getMessage()
+                    ]
+                ];
+            }
+        }
+
+        /**
+         * Consulta cadastro de uma empresa pelo seu Id. Caso nenhum Id seja passado,
+         * consulta pelo Id instanciado na classe.
+         * 
+         * @param string|null $idEmpresa    Id da empresa cadastrada na API.
+         * 
+         * @return array
+         */
+        public function consultaEmpresaPorId (?string $idEmpresa): array
+        {
+            $id = $idEmpresa ?? $this->idEmpresa;
+            
+            if ($id === null) {
+                return [
+                    'status' => 500,
+                    'data' => [
+                        'mensagem' => 'Erro ao consultar empresa por Id',
+                        'detalhe'  => 'Nenhum Id fornecido'
+                    ]
+                    ];
+            }
+
+            $uri = "/v2/empresas/{$id}";
+
+            try {
+                return $this->request('GET', $uri);
+            } catch (Exception $e) {
+                return [
+                    'status' => 500,
+                    'data'   => [
+                        'mensagem' => 'Erro ao consultar empresa por Id',
+                        'detalhe ' => $e->getMessage()
+                    ]
+                ];
+            }
+        }
+
+        /**
+         * Atualiza dados cadastrais da empresa na API
+         * 
+         * @param array $payload    Array com dados cadastrais da empresa. Verificar exemplos.
+         * @param bool  $producao   Habilite para false para ambiente de homologação.
+         * 
+         * @return array
+         */
+        public function atualizaEmpresa (array $payload, bool $producao = true): array
+        {
+            $uri = $producao ? "/v2/empresas/{$this->idEmpresa}" : "/v2/empresas/{$this->idEmpresa}?dry_run=1";
+
+            try {
+                return $this->request('PUT', $uri, $this->geraPayloadCadastroEmpresa($payload));
+            } catch (Exception $e) {
+                return [
+                    'status' => 500,
+                    'data' => [
+                        'mensagem' => 'Erro ao atualizar dados da empresa',
+                        'detalhe'  => $e->getMessage()
+                    ]
+                ];
+            }    
+        }
+
+        /**
+         * Deleta registro da empresa do banco de dados da FocusNFe.
+         */
+        public function deletaEmpresa (): array
+        {
+            $uri = "/v2/empresas/{$this->idEmpresa}";
+
+            try {
+                return $this->request('DELETE', $uri);
+            } catch (Exception $e) {
+                 return [
+                    'status' => 500,
+                    'data' => [
+                        'mensagem' => 'Erro ao atualizar dados da empresa',
+                        'detalhe'  => $e->getMessage()
+                    ]
+                ];
+            }
+        }
+
+        /**
+         * Realiza requisição HTTP
+         * 
+         * @param string $method    Método HTTP (POST, GET, PUT, DELETE, PATCH)
+         * @param string $uri       Endpoint da API
+         * @param array|null $body  Payload da requisição
+         * @param bool $raw         Se true, retorna o dado bruto (para download de xml, pdf, etc)
+         * 
+         * @return array {
+         *  status: int,
+         *  data: mixed
+         * }
+         * 
+         * @throws Exception    Em caso de erro de comunicação
+         */
         private function request (string $method = 'GET', string $uri, ?array $body = null, bool $raw = false): array
         {
             $ch = curl_init();
